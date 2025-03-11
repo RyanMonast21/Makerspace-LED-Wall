@@ -1,0 +1,85 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <ArduinoJson.h>
+
+// Wi-Fi Credentials
+const char* WiFiSSID = "WiFi Name";       // Replace with your WiFi name
+const char* WiFiPassword = "WiFi Password"; // Replace with your WiFi password
+
+// OpenWeatherMap API Key and City
+const char* apiKey = "Get this from OpenWeatherMap";  // Get this from OpenWeatherMap
+const char* city = "Change to your city";        // Change to your city
+const char* countryCode = "US";       // Change country code if needed
+
+// API URL
+String apiURL = "http://api.openweathermap.org/data/2.5/weather?q=" + 
+                String(city) + "," + String(countryCode) + 
+                "&appid=" + String(apiKey) + "&units=imperial";
+
+void setup(){
+    Serial.begin(115200);
+    WiFi.begin(WiFiSSID, WiFiPassword);
+
+    Serial.print("Connecting to Wi-Fi");
+    while (WiFi.status() != WL_CONNECTED){
+        delay(500);
+        Serial.print(".");
+    }
+    Serial.println("\nConnected to Wi-Fi!");
+}
+
+void loop() {
+    //IF WI-FI IS SUCCESSFULLY CONNECTED
+    if (WiFi.status() == WL_CONNECTED){
+        HTTPClient http;
+        http.begin(apiURL);
+        int httpResponseCode = http.GET();
+
+        //IF THE JSON REQUEST IS SUCCESSFUL
+        if (httpResponseCode > 0){
+            String JSONpayload = http.getString();  // Read response
+
+            //PARSES JSON DATA
+            DynamicJsonDocument JSONDocument(1024);
+            DeserializationError error = deserializeJson(JSONDocument, JSONpayload);
+
+            //IF THE JSON DATA IS SUCCESSFULLY PARSED WITHOUT ERROR
+            if (!error){
+                String weatherCondition = JSONDocument["weather"][0]["main"];  //Condition
+                String weatherDescription = JSONDocument["weather"][0]["description"];    //Description
+                float temperature = JSONDocument["main"]["temp"];  //Temperature
+
+
+                // Print parsed weather data ***DEBUGGING PURPOSES ONLY***
+                Serial.println("----------- WEATHER INFO -----------");
+                Serial.println("City: " + String(city));
+                Serial.println("Condition: " + weatherCondition);
+                Serial.println("Description: " + weatherDescription);
+                Serial.print("Temperature: ");
+                Serial.print(temperature);
+                Serial.println(" °F");
+                Serial.println("-----------------------------------");
+            } 
+            else{
+                Serial.println("JSON Parsing Failed!");
+              }
+        } 
+        //IF HTTP REQUEST FAILS
+        else{
+            Serial.print("Error on HTTP request: ");
+            Serial.println(httpResponseCode);
+        }
+        http.end();  // Close HTTP Connection
+    } 
+    //IF WI-FI CONNECTION CANNOT BE PROPERLY OBTAINED RETRY
+    else{
+        Serial.println("Wi-Fi Disconnected. Reconnecting...");
+        WiFi.begin(WiFiSSID, WiFiPassword);
+    }
+
+    delay(300000);  // Refreshes every five minutes.
+}
+
+void apiGrade(){
+  
+}
