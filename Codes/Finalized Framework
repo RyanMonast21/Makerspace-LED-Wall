@@ -1,0 +1,140 @@
+#include <WiFi.h>         //  FOR API GRAB
+#include <HTTPClient.h>   //  FOR API GRAB
+#include <ArduinoJson.h>  //  FOR API GRAB
+
+#include <FS.h>   //  FOR SD CARD
+#include <SD.h>   //  FOR SD CARD
+#include <SPI.h>  //  FOR SD CARD
+
+#include <NTPClient.h>  //  FOR DATE COMPUTATION
+#include <WiFiUdp.h>    //  FOR DATE COMPUTATION
+
+// Wi-Fi Credentials
+const char* WiFiSSID = "WiFi Name";         // Replace with new WiFi name
+const char* WiFiPassword = "WiFi Password";  // Replace with new WiFi password
+
+// OpenWeatherMap API Key and City
+const char* apiKey = "OpenWeatherMap API Key";  // OpenWeatherMap API Key
+const char* city = "City Selection";                           // City Selection
+const char* countryCode = "Country Selection";                           // Country Selection
+
+// Connect to the NTP Server for date and time
+const char* ntpServer = "pool.ntp.org";
+const long gmtOffset_sec = -5 * 3600;  // EST (UTC -5)
+const int daylightOffset_sec = 3600;   // Add 1 hour for DST (EDT)
+
+//SD Card CS Pin Definition
+#define SDCardCsPin 5  
+
+// API URL
+String apiURL = "http://api.openweathermap.org/data/2.5/weather?q=" + String(city) + "," + String(countryCode) + "&appid=" + String(apiKey) + "&units=imperial";
+
+void setup() {
+  Serial.begin(115200);  // Toggle on for Serial Monitor Data (All)
+  WiFi.begin(WiFiSSID, WiFiPassword);
+
+  Serial.print("Connecting to Wi-Fi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nConnected to Wi-Fi!");
+
+  // Configure time
+  configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
+}
+
+void loop() {
+  // CHECK IF WI-FI IS SUCCESSFULLY CONNECTED
+  if (WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+    http.begin(apiURL);
+    int httpResponseCode = http.GET();
+
+    // IF THE JSON REQUEST IS SUCCESSFUL
+    if (httpResponseCode > 0) {
+      String JSONpayload = http.getString();  // Read response
+
+      // PARSES JSON DATA
+      DynamicJsonDocument JSONDocument(1024);
+      DeserializationError error = deserializeJson(JSONDocument, JSONpayload);
+
+      // IF THE JSON DATA IS SUCCESSFULLY PARSED
+      if (!error) {
+        String weatherCondition = JSONDocument["weather"][0]["main"];  // Condition
+        float temperature = JSONDocument["main"]["temp"];  // Temperature
+
+        struct tm timeInfo;
+        if (!getLocalTime(&timeInfo)) {
+          Serial.println("Failed to obtain time");
+          return;
+        }
+
+        int currentMonth = timeInfo.tm_mon + 1;  // Fix: Month counter starts at zero
+        int currentDay = timeInfo.tm_mday;
+
+        Serial.print("Current Month: ");
+        Serial.println(currentMonth);
+        Serial.print("Current Date: ");
+        Serial.println(currentDay);
+        Serial.print("Weather Condition: ");
+        Serial.println(weatherCondition);
+        Serial.print("Temperature: ");
+        Serial.println(temperature);
+
+        // Determine the Season
+        String season;
+        if (currentMonth == 12 || currentMonth == 1 || currentMonth == 2) season = "Winter";
+        else if (currentMonth == 3 || currentMonth == 4 || currentMonth == 5) season = "Spring";
+        else if (currentMonth == 6 || currentMonth == 7 || currentMonth == 8) season = "Summer";
+        else season = "Fall";
+
+        Serial.print("Season: ");
+        Serial.println(season);
+
+        // Temperature Category
+        String tempCategory;
+        if (temperature >= 80) tempCategory = "Hot";
+        else if (temperature <= 32) tempCategory = "Cold";
+        else tempCategory = "Moderate";
+
+        Serial.print("Temperature Category: ");
+        Serial.println(tempCategory);
+
+        // Determine Animation Based on Weather and Season
+        String animationFolder = "/" + tempCategory + "_" + season + "/";
+        Serial.print("Animation Folder: ");
+        Serial.println(animationFolder);
+
+        // Weather Conditions Handling
+        if (weatherCondition == "Clear") {
+          Serial.println("Clear Sky Animation Selected");
+        } else if (
+          weatherCondition == "Clouds" || weatherCondition == "Tornado" ||
+          weatherCondition == "Squall" || weatherCondition == "Ash" ||
+          weatherCondition == "Dust" || weatherCondition == "Sand" ||
+          weatherCondition == "Fog" || weatherCondition == "Haze" ||
+          weatherCondition == "Smoke" || weatherCondition == "Mist") {
+          Serial.println("Cloudy/Foggy Animation Selected");
+        } else if (weatherCondition == "Snow") {
+          Serial.println("Snow Animation Selected");
+        } else if (weatherCondition == "Rain" || weatherCondition == "Drizzle") {
+          Serial.println("Rain Animation Selected");
+        } else {
+          Serial.println("Unknown Weather Condition");
+        }
+      }
+    } else {
+      Serial.print("Error on HTTP request: ");
+      Serial.println(httpResponseCode);
+    }
+    http.end();  // Close HTTP Connection
+  }
+  // IF WI-FI CONNECTION DROPS, RECONNECT
+  else {
+    Serial.println("Wi-Fi Disconnected. Reconnecting...");
+    WiFi.begin(WiFiSSID, WiFiPassword);
+  }
+
+  delay(60000);  // Fetch new data every 60 seconds
+}
